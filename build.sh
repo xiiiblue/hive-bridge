@@ -4,6 +4,7 @@
 set -eu
 cd "$(dirname "$0")"
 export TMPDIR=/tmp
+version=$(node -p 'require("./frontend/package.json").version')
 stage=$(mktemp -d "$TMPDIR/hive-bridge-build.XXXXXXXX")
 trap 'rm -rf "$stage"' EXIT
 (cd frontend && npm ci --no-audit --no-fund && npm run build)
@@ -34,7 +35,7 @@ for platform in windows macos; do
     cp hivebridge.json "$stage/$platform/"
   fi
   cp -R images "$stage/$platform/"
-  name="hive-bridge-1.0-$platform.zip"
+  name="hive-bridge-$version-$platform.zip"
   (cd "$stage/$platform" && zip -qr "../$name" .)
   mv "$stage/$name" "dist/$name"
 done

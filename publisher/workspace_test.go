@@ -203,6 +203,29 @@ func TestUpfrontLoginPersistsEncryptedCredentials(t *testing.T) {
 	}
 }
 
+func TestWorkspaceViewEncodesEmptyListsAsArrays(t *testing.T) {
+	dir := t.TempDir()
+	managed := EnsureManagedConfig(filepath.Join(dir, "hivebridge.json"), "")
+	v, err := NewWorkspace(managed, filepath.Join(dir, "source-root")).View()
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := json.Marshal(v)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fields struct {
+		Panels       json.RawMessage
+		Environments json.RawMessage
+	}
+	if err := json.Unmarshal(data, &fields); err != nil {
+		t.Fatal(err)
+	}
+	if string(fields.Panels) != "[]" || string(fields.Environments) != "[]" {
+		t.Fatalf("Panels = %s, Environments = %s, want two empty arrays", fields.Panels, fields.Environments)
+	}
+}
+
 func TestExampleConfigOrderAndReorder(t *testing.T) {
 	// 1. 验证仓库示例配置格式有效且按 order 正确排序
 	examplePath := filepath.Join("..", "hivebridge.example.json")

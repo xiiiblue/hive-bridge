@@ -63,8 +63,10 @@
 
 ### 直接使用预编译安装包
 
-1. **macOS**：解压 `hive-bridge-1.0-macos.zip`，将 `HiveBridge.app` 拖入「应用程序」目录或直接双击打开。
-2. **Windows**：解压 `hive-bridge-1.0-windows.zip`，双击运行 `hivebridge.exe`。
+从[GitHub发布页](https://github.com/xiiiblue/hive-bridge/releases/latest)下载对应平台的压缩包。
+
+1. **macOS**：解压`hive-bridge-<版本>-macos.zip`，将`HiveBridge.app`拖入「应用程序」目录或直接双击打开。
+2. **Windows**：解压`hive-bridge-<版本>-windows.zip`，双击运行`hivebridge.exe`。
 
 ### 配置方式（零配置或导入团队配置）
 
@@ -167,8 +169,8 @@ sh build.sh
 
 脚本会编译前端并嵌入桌面程序，生成以下两个分发包到 `dist/` 目录（默认不包含任何本地私有配置）：
 
-- `dist/hive-bridge-1.0-macos.zip`（macOS Apple Silicon + Intel 通用应用）
-- `dist/hive-bridge-1.0-windows.zip`（Windows x64 可执行程序）
+- `dist/hive-bridge-<版本>-macos.zip`（macOS Apple Silicon和Intel通用应用）
+- `dist/hive-bridge-<版本>-windows.zip`（Windows x64可执行程序）
 
 > 如团队内部打包需要随包附带本地未入库的 `hivebridge.json`，可执行：`BUNDLE_CONFIG=1 sh build.sh`。
 

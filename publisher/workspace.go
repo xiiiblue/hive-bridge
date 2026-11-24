@@ -78,6 +78,8 @@ func (w *Workspace) snapshot() (View, error) {
 		return v, err
 	}
 	v.Stamp = stamp
+	v.Panels = make([]PanelRow, 0, len(c.Panels))
+	v.Environments = make([]EnvironmentRow, 0, len(c.Environments))
 	for _, env := range sortedEnvNames(c.Environments) {
 		e := c.Environments[env]
 		row := EnvironmentRow{Name: env, URL: e.URL, Tag: e.Tag, Order: e.Order}
@@ -105,6 +107,7 @@ func (w *Workspace) snapshot() (View, error) {
 	})
 	return v, nil
 }
+
 // EnsureManagedConfig 将配置托管在用户目录中；首次启动自动从随包配置初始化（无随包配置时生成空配置），不再要求程序目录可写。
 func EnsureManagedConfig(managedPath, seedPath string) string {
 	if managedPath == "" {

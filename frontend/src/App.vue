@@ -27,6 +27,7 @@ import {
 import SkillsView from './SkillsView.vue'
 import KnowledgeView from './KnowledgeView.vue'
 import EnvironmentsView from './EnvironmentsView.vue'
+import { version } from '../package.json'
 import brandMark from '../../brand.svg'
 import { statusTone } from './status'
 import {
@@ -641,7 +642,7 @@ onMounted(() => {
           <div>
             <div class="brand-name">
               <strong>HiveBridge</strong>
-              <span class="version-tag">1.0</span>
+              <span class="version-tag">{{ version }}</span>
             </div>
             <p>
               先登录一个蜂巢环境，凭据将加密保存在本机，后续直接管理业务面板、企业Skill与知识库。
