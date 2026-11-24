@@ -1,0 +1,46 @@
+{
+  "panels": {
+    "overview": {
+      "name": "运行概览",
+      "source": "panels/overview"
+    },
+    "tickets": {
+      "name": "工单列表",
+      "source": "panels/tickets"
+    },
+    "dispatch": {
+      "name": "任务调度",
+      "source": ""
+    }
+  },
+  "environments": {
+    "开发环境": {
+      "url": "https://dev.hive.example.com",
+      "tag": "dev",
+      "order": 1,
+      "bindings": {
+        "overview": "ops/overview-dev",
+        "tickets": "ops/tickets",
+        "dispatch": "ops/dispatch-dev"
+      }
+    },
+    "测试环境": {
+      "url": "https://test.hive.example.com",
+      "tag": "test",
+      "order": 2,
+      "bindings": {
+        "overview": "ops/overview-test",
+        "dispatch": "ops/dispatch"
+      }
+    },
+    "生产环境": {
+      "url": "https://prod.hive.example.com",
+      "tag": "prod",
+      "order": 3,
+      "bindings": {
+        "overview": "ops/overview",
+        "tickets": "ops/tickets"
+      }
+    }
+  }
+}

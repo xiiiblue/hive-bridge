@@ -1,0 +1,16 @@
+# Local private environment & panel configs (never commit to open-source repo)
+hivebridge.json
+hive-panel.json
+panel-inventory.md
+local-config/
+
+# Build outputs & dependencies
+dist/
+frontend/dist/
+frontend/node_modules/
+*.syso
+
+# OS & editor files
+.DS_Store
+Thumbs.db
+*.log
