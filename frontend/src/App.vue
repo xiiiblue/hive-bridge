@@ -21,6 +21,8 @@ import {
   AlertTriangle,
   Settings2,
   SlidersHorizontal,
+  CloudDownload,
+  Pencil,
 } from 'lucide-vue-next'
 import SkillsView from './SkillsView.vue'
 import KnowledgeView from './KnowledgeView.vue'
@@ -29,10 +31,10 @@ import brandMark from '../../brand.svg'
 import { statusTone } from './status'
 import {
   api,
-  envTagLabel,
   type Env,
   type EnvTag,
   type Panel,
+  type RemotePanelOption,
   type Report,
   type Target,
   type View,
@@ -45,7 +47,7 @@ const error = ref(''),
   toast = ref(''),
   busy = ref(false),
   progress = ref(''),
-  phase = ref<'env' | 'preview' | 'confirm' | 'results'>('env')
+  phase = ref<'env' | 'panel' | 'preview' | 'confirm' | 'results'>('env')
 const dialog = ref<HTMLDialogElement>(),
   modal = ref(false)
 const skipOnboarding = ref(false)
@@ -61,6 +63,18 @@ const envForm = ref({
   Password: '',
 })
 const continueCheckAfterAuth = ref(false)
+
+// 业务面板与目标资源键配置状态
+const editingPanelAlias = ref('')
+const panelForm = ref({
+  Name: '',
+  Source: '',
+  Binding: '',
+  ApplyAllEnvs: true,
+})
+const remotePanels = ref<RemotePanelOption[]>([])
+const remotePanelsLoading = ref(false)
+const remotePanelsError = ref('')
 
 type Page = 'panels' | 'skill' | 'knowledge' | 'environments'
 const page = ref<Page>('panels'),
@@ -95,6 +109,12 @@ const pending = computed(
 const readyCount = computed(
   () => (view.value?.Panels.length ?? 0) - pending.value,
 )
+const boundInCurrentEnvCount = computed(() => {
+  const envName = activeEnvName.value
+  if (!envName) return 0
+  return (view.value?.Panels ?? []).filter((p) => Boolean(p.Bindings[envName]))
+    .length
+})
 const visibleRows = computed(() => {
   const envName = activeEnvName.value
   const q = search.value.trim().toLowerCase()
@@ -133,6 +153,9 @@ const title = computed(() => {
       (editingEnv.value?.LoggedIn ? '管理环境 · ' : '登录环境 · ') +
       editingEnvName.value
     )
+  }
+  if (phase.value === 'panel') {
+    return editingPanelAlias.value ? '配置面板与目标资源键' : '添加业务面板'
   }
   return {
     preview: '本地打包结果',
@@ -328,7 +351,7 @@ async function openAddEnv() {
   phase.value = 'env'
   report.value = undefined
   editingEnvName.value = ''
-  envForm.value = { Name: '', URL: '', Tag: 'dev', Account: '', Password: '' }
+  envForm.value = { Name: '', URL: '', Tag: '', Account: '', Password: '' }
   continueCheckAfterAuth.value = false
   await show()
 }
@@ -447,6 +470,114 @@ async function moveEnv(envName: string, delta: -1 | 1) {
     await load()
   })
 }
+async function loadRemotePanelOptions() {
+  remotePanels.value = []
+  remotePanelsError.value = ''
+  if (!currentEnv.value?.LoggedIn) return
+  remotePanelsLoading.value = true
+  try {
+    remotePanels.value = await api().ListRemotePanels(currentEnv.value.Name)
+  } catch (e) {
+    remotePanelsError.value = String(e)
+  } finally {
+    remotePanelsLoading.value = false
+  }
+}
+async function openAddPanel() {
+  if (busy.value || subBusy.value || !view.value) return
+  error.value = ''
+  phase.value = 'panel'
+  report.value = undefined
+  editingPanelAlias.value = ''
+  panelForm.value = { Name: '', Source: '', Binding: '', ApplyAllEnvs: true }
+  void loadRemotePanelOptions()
+  await show()
+}
+async function openEditPanel(p: Panel) {
+  if (busy.value || subBusy.value || !view.value) return
+  error.value = ''
+  phase.value = 'panel'
+  report.value = undefined
+  editingPanelAlias.value = p.Alias
+  panelForm.value = {
+    Name: p.Name,
+    Source: p.Source,
+    Binding: activeEnvName.value ? p.Bindings[activeEnvName.value] || '' : '',
+    ApplyAllEnvs: false,
+  }
+  void loadRemotePanelOptions()
+  await show()
+}
+function pickRemotePanel(binding: string) {
+  if (!binding) return
+  panelForm.value.Binding = binding
+  const matched = remotePanels.value.find((r) => r.Binding === binding)
+  if (matched && !panelForm.value.Name.trim()) {
+    panelForm.value.Name = matched.DisplayName
+  }
+}
+async function submitPanelForm() {
+  if (!view.value) return
+  let ok = false
+  await task(async () => {
+    await api().SavePanel(
+      view.value!.Stamp,
+      editingPanelAlias.value,
+      activeEnvName.value,
+      {
+        Alias: editingPanelAlias.value,
+        Name: panelForm.value.Name.trim(),
+        Source: panelForm.value.Source.trim(),
+        Binding: panelForm.value.Binding.trim(),
+        ApplyAllEnvs: panelForm.value.ApplyAllEnvs,
+      },
+    )
+    await load()
+    ok = true
+  })
+  if (ok) {
+    dialog.value?.close()
+    modal.value = false
+    showToast(editingPanelAlias.value ? '已保存面板配置' : '已添加业务面板')
+  }
+}
+async function deleteCurrentPanel() {
+  if (!view.value || !editingPanelAlias.value) return
+  const alias = editingPanelAlias.value
+  let ok = false
+  await task(async () => {
+    await api().DeletePanel(view.value!.Stamp, alias)
+    await load()
+    ok = true
+  })
+  if (ok) {
+    dialog.value?.close()
+    modal.value = false
+    showToast('已删除业务面板')
+  }
+}
+async function syncRemotePanels() {
+  if (!view.value || !currentEnv.value) return
+  if (!currentEnv.value.LoggedIn) {
+    await openEnvAuth(currentEnv.value.Name)
+    return
+  }
+  const envName = currentEnv.value.Name
+  let added = 0
+  let ok = false
+  await task(async () => {
+    added = await api().SyncRemotePanels(view.value!.Stamp, envName)
+    await load()
+    ok = true
+  })
+  if (ok) {
+    showToast(
+      added > 0
+        ? `已从 ${envName} 同步 ${added} 个远端面板`
+        : `${envName} 的远端面板已全部在列表中`,
+    )
+  }
+}
 async function preview() {
   if (!selectedTargets.value.length) return
   await task(async () => {
@@ -532,9 +663,6 @@ onMounted(() => {
               <div class="onboarding-env-info">
                 <div class="onboarding-env-title">
                   <strong>{{ e.Name }}</strong>
-                  <span v-if="e.Tag" class="tag-pill" :data-tag="e.Tag">{{
-                    envTagLabel(e.Tag)
-                  }}</span>
                 </div>
                 <code>{{ e.URL }}</code>
               </div>
@@ -572,9 +700,8 @@ onMounted(() => {
           <div class="brand-copy">
             <div class="brand-name">
               <strong>HiveBridge</strong>
-              <span class="version-tag">1.0</span>
             </div>
-            <small>资源发布工具</small>
+            <small>HiveOS 开发者工具</small>
           </div>
         </div>
 
@@ -658,18 +785,8 @@ onMounted(() => {
                 <span class="env-copy">
                   <span class="env-name-row">
                     <span class="env-name">{{ e.Name }}</span>
-                    <span
-                      v-if="e.Tag"
-                      class="tag-pill mini"
-                      :data-tag="e.Tag"
-                      >{{ envTagLabel(e.Tag) }}</span
-                    >
                   </span>
-                  <small class="env-sub">{{
-                    e.LoggedIn
-                      ? e.Account + ' · ' + envHost(e.URL)
-                      : envHost(e.URL)
-                  }}</small>
+                  <small class="env-sub">{{ envHost(e.URL) }}</small>
                 </span>
               </button>
               <button
@@ -757,19 +874,12 @@ onMounted(() => {
               <span
                 v-if="currentEnv"
                 class="toolbar-env-badge"
-                :data-tag="currentEnv.Tag"
               >
                 <span
                   class="env-dot"
                   :class="{ connected: currentEnv.LoggedIn }"
                 />
                 <span>{{ currentEnv.Name }}</span>
-                <span
-                  v-if="currentEnv.Tag"
-                  class="tag-pill mini"
-                  :data-tag="currentEnv.Tag"
-                  >{{ envTagLabel(currentEnv.Tag) }}</span
-                >
               </span>
               <span v-if="view" class="title-count"
                 >{{ view.Panels.length }} 项</span
@@ -802,6 +912,22 @@ onMounted(() => {
                 <kbd v-if="!search">⌘F</kbd>
               </label>
               <button
+                class="compact-btn"
+                :disabled="busy || subBusy || !currentEnv?.LoggedIn"
+                title="从当前已登录环境自动拉取远端业务面板及目标资源键"
+                @click="syncRemotePanels"
+              >
+                <CloudDownload :size="13" :stroke-width="2" />同步远端
+              </button>
+              <button
+                class="compact-btn"
+                :disabled="busy || subBusy || !view"
+                title="手工添加业务面板并配置目标资源键"
+                @click="openAddPanel"
+              >
+                <Plus :size="13" :stroke-width="2.1" />添加面板
+              </button>
+              <button
                 class="tool-icon-btn"
                 :disabled="busy || subBusy"
                 @click="setup('reload')"
@@ -816,13 +942,15 @@ onMounted(() => {
           <div class="pathbar">
             <div class="pathbar-main">
               <FolderOpen :size="14" :stroke-width="1.9" />
-              <span class="pathbar-label">源码根目录</span>
+              <span class="pathbar-label">默认源码根目录</span>
               <span class="pathbar-sep">/</span>
               <code
                 class="pathbar-value"
                 :class="{ placeholder: !view?.Root }"
                 :title="view?.Root"
-                >{{ view?.Root || '尚未选择业务面板仓库目录' }}</code
+                >{{
+                  view?.Root || '可选，未设置时可直接为单个面板选择任意本机目录'
+                }}</code
               >
             </div>
             <button class="compact-btn" :disabled="busy" @click="setup('root')">
@@ -843,6 +971,25 @@ onMounted(() => {
               @click="openEnvAuth(currentEnv.Name)"
             >
               立即登录
+            </button>
+          </div>
+
+          <div
+            v-else-if="currentEnv?.LoggedIn && boundInCurrentEnvCount === 0"
+            class="auth-banner"
+          >
+            <div class="auth-banner-copy">
+              <CloudDownload :size="13.5" :stroke-width="2" />
+              <span
+                >当前环境 <strong>{{ currentEnv.Name }}</strong> 尚未绑定业务面板，可一键从远端拉取并自动填入目标资源键。</span
+              >
+            </div>
+            <button
+              class="compact-btn"
+              :disabled="busy"
+              @click="syncRemotePanels"
+            >
+              一键同步远端面板
             </button>
           </div>
 
@@ -903,11 +1050,11 @@ onMounted(() => {
                       <button
                         class="source single-line"
                         :class="{ missing: !p.Source }"
-                        :disabled="busy || !view.Root"
+                        :disabled="busy"
                         :title="
                           p.Source
                             ? p.Source + '（点击更换）'
-                            : '选择并验证上传目录'
+                            : '选择并验证本地上传目录（支持任意本机目录）'
                         "
                         @click="setup('source', p.Alias)"
                       >
@@ -917,12 +1064,25 @@ onMounted(() => {
                     </div>
                   </th>
                   <td class="panel-binding-col">
-                    <code
-                      v-if="activeEnvName && p.Bindings[activeEnvName]"
-                      class="binding-code"
-                      >{{ p.Bindings[activeEnvName] }}</code
+                    <button
+                      class="binding-edit-btn"
+                      :disabled="busy"
+                      :aria-label="'配置面板 ' + p.Name + ' 的目标资源键'"
+                      title="点击配置面板名称与当前环境目标资源键"
+                      @click="openEditPanel(p)"
                     >
-                    <span v-else class="unset-inline">— 当前环境未绑定</span>
+                      <code
+                        v-if="activeEnvName && p.Bindings[activeEnvName]"
+                        class="binding-code"
+                        >{{ p.Bindings[activeEnvName] }}</code
+                      >
+                      <span v-else class="unset-inline">— 点击配置资源键</span>
+                      <Pencil
+                        class="binding-edit-icon"
+                        :size="11.5"
+                        :stroke-width="2"
+                      />
+                    </button>
                   </td>
                   <td class="col-status-cell">
                     <span
@@ -976,12 +1136,6 @@ onMounted(() => {
               <span v-if="currentEnv" class="muted">
                 · 目标环境 {{ currentEnv.Name }}
               </span>
-              <span
-                v-if="currentEnv?.Tag === 'prod'"
-                class="tag-pill mini"
-                data-tag="prod"
-                >正式</span
-              >
             </div>
             <div class="actions">
               <button
@@ -993,14 +1147,14 @@ onMounted(() => {
                 清空
               </button>
               <button
-                :disabled="busy || !selectedTargets.length || !view?.Root"
+                :disabled="busy || !selectedTargets.length"
                 @click="preview"
               >
                 <PackageCheck :size="14" :stroke-width="1.9" />本地打包预览
               </button>
               <button
                 class="primary"
-                :disabled="busy || !selectedTargets.length || !view?.Root"
+                :disabled="busy || !selectedTargets.length"
                 @click="startCheck"
               >
                 检查发布目标 <ArrowRight :size="14" :stroke-width="2" />
@@ -1057,27 +1211,16 @@ onMounted(() => {
           </p>
 
           <div class="inset-group auth-fields">
-            <div class="fields">
-              <label>
-                环境名称
-                <input
-                  v-model="envForm.Name"
-                  required
-                  maxlength="48"
-                  placeholder="例如 开发环境 或 测试环境"
-                  :disabled="busy"
-                />
-              </label>
-              <label>
-                环境类型
-                <select v-model="envForm.Tag" :disabled="busy">
-                  <option value="">未分类</option>
-                  <option value="dev">开发</option>
-                  <option value="test">测试</option>
-                  <option value="prod">正式（发布保护）</option>
-                </select>
-              </label>
-            </div>
+            <label class="stack-label">
+              环境名称
+              <input
+                v-model="envForm.Name"
+                required
+                maxlength="48"
+                placeholder="例如 开发环境 或 测试环境"
+                :disabled="busy"
+              />
+            </label>
 
             <label class="stack-label" style="margin-top: 12px">
               服务地址
@@ -1112,6 +1255,20 @@ onMounted(() => {
                 />
               </label>
             </div>
+
+            <label class="check-row" style="margin-top: 12px">
+              <input
+                type="checkbox"
+                :checked="envForm.Tag === 'prod'"
+                :disabled="busy"
+                @change="
+                  envForm.Tag = ($event.target as HTMLInputElement).checked
+                    ? 'prod'
+                    : ''
+                "
+              />
+              <span>发布前显示强确认提示（建议用于客户现场或生产环境）</span>
+            </label>
           </div>
         </div>
         <p v-if="error" class="error dialog-error" role="alert">{{ error }}</p>
@@ -1147,6 +1304,134 @@ onMounted(() => {
                     ? '保存修改'
                     : '登录并记住'
             }}
+          </button>
+        </div>
+      </form>
+
+      <!-- 添加 / 编辑业务面板与目标资源键 -->
+      <form
+        v-else-if="modal && phase === 'panel'"
+        @submit.prevent="submitPanelForm"
+      >
+        <div class="body">
+          <p class="hint auth-hint">
+            {{
+              activeEnvName
+                ? `配置面板信息与「${activeEnvName}」的目标资源键（格式：业务系统键/面板键，留空表示在当前环境解绑）。`
+                : '配置面板展示名称与本地相对目录。'
+            }}
+          </p>
+
+          <div class="inset-group auth-fields">
+            <label v-if="currentEnv?.LoggedIn" class="stack-label">
+              从「{{ currentEnv.Name }}」远端面板选择
+              <select
+                :disabled="busy || remotePanelsLoading"
+                :value="
+                  remotePanels.some((r) => r.Binding === panelForm.Binding)
+                    ? panelForm.Binding
+                    : ''
+                "
+                @change="
+                  pickRemotePanel(($event.target as HTMLSelectElement).value)
+                "
+              >
+                <option value="">
+                  {{
+                    remotePanelsLoading
+                      ? '正在拉取远端面板列表…'
+                      : remotePanels.length
+                        ? '选择远端面板自动填入目标资源键…'
+                        : '未找到启用的远端面板（可在下方手动输入）'
+                  }}
+                </option>
+                <option
+                  v-for="r in remotePanels"
+                  :key="r.Binding"
+                  :value="r.Binding"
+                >
+                  {{ r.DisplayName }}（{{ r.Binding
+                  }}{{ r.Version ? ' · v' + r.Version : '' }}）
+                </option>
+              </select>
+            </label>
+            <p
+              v-if="remotePanelsError"
+              class="hint"
+              style="margin-top: 6px; color: var(--error-ink)"
+            >
+              拉取远端面板失败：{{ remotePanelsError }}
+            </p>
+
+            <label class="stack-label" style="margin-top: 12px">
+              面板名称
+              <input
+                v-model="panelForm.Name"
+                required
+                placeholder="例如 报警处置"
+                :disabled="busy"
+              />
+            </label>
+
+            <label
+              v-if="activeEnvName"
+              class="stack-label"
+              style="margin-top: 12px"
+            >
+              {{ activeEnvName }} · 目标资源键
+              <input
+                v-model="panelForm.Binding"
+                placeholder="例如 lighting/alarm-disposal（留空则当前环境不绑定）"
+                :disabled="busy"
+              />
+            </label>
+
+            <label
+              v-if="
+                view &&
+                view.Environments.length > 1 &&
+                panelForm.Binding.trim()
+              "
+              class="check-row"
+              style="margin-top: 10px"
+            >
+              <input
+                v-model="panelForm.ApplyAllEnvs"
+                type="checkbox"
+                :disabled="busy"
+              />
+              <span
+                >同时将此目标资源键应用到全部
+                {{ view.Environments.length }} 个环境</span
+              >
+            </label>
+
+            <label class="stack-label" style="margin-top: 12px">
+              本地目录（可选，支持相对路径或本机绝对路径）
+              <input
+                v-model="panelForm.Source"
+                placeholder="例如 panels/alarm-disposal 或本机绝对路径（也可稍后点击选择文件夹）"
+                :disabled="busy"
+              />
+            </label>
+          </div>
+        </div>
+        <p v-if="error" class="error dialog-error" role="alert">{{ error }}</p>
+        <div class="dialog-foot">
+          <div v-if="editingPanelAlias" class="foot-left-actions">
+            <button
+              type="button"
+              class="ghost-btn danger-text"
+              :disabled="busy"
+              @click="deleteCurrentPanel"
+            >
+              <Trash2 :size="13" :stroke-width="2" />删除面板
+            </button>
+          </div>
+          <span v-else role="status">{{ progress }}</span>
+          <button type="button" :disabled="busy" @click="close">取消</button>
+          <button class="primary" :disabled="busy">
+            {{ busy ? '正在保存…' : editingPanelAlias ? '保存修改' : '添加面板' }}
           </button>
         </div>
       </form>

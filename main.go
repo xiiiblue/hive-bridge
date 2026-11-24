@@ -42,6 +42,18 @@ func (a *App) DeleteEnvironment(stamp, name string) error {
 func (a *App) ReorderEnvironments(stamp string, names []string) error {
 	return a.work.ReorderEnvironments(stamp, names)
 }
+func (a *App) ListRemotePanels(env string) ([]publisher.RemotePanelOption, error) {
+	return a.work.ListRemotePanels(env)
+}
+func (a *App) SyncRemotePanels(stamp, env string) (int, error) {
+	return a.work.SyncRemotePanels(stamp, env)
+}
+func (a *App) SavePanel(stamp, previousAlias, env string, input publisher.PanelInput) error {
+	return a.work.SavePanel(stamp, previousAlias, env, input)
+}
+func (a *App) DeletePanel(stamp, alias string) error {
+	return a.work.DeletePanel(stamp, alias)
+}
 func (a *App) ChooseConfig() error {
 	p, err := wr.OpenFileDialog(a.ctx, wr.OpenDialogOptions{Title: "导入HiveBridge配置文件", Filters: []wr.FileFilter{{DisplayName: "JSON配置", Pattern: "*.json"}}})
 	if err != nil || p == "" {
@@ -75,10 +87,11 @@ func (a *App) ChooseSource(stamp, alias string) error {
 	if err != nil {
 		return err
 	}
-	if view.Root == "" {
-		return errors.New("请先选择源码根目录")
+	opts := wr.OpenDialogOptions{Title: "选择面板上传目录"}
+	if view.Root != "" {
+		opts.DefaultDirectory = view.Root
 	}
-	p, err := wr.OpenDirectoryDialog(a.ctx, wr.OpenDialogOptions{Title: "选择面板上传目录", DefaultDirectory: view.Root})
+	p, err := wr.OpenDirectoryDialog(a.ctx, opts)
 	if err != nil || p == "" {
 		return err
 	}
@@ -251,7 +264,7 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	err = wails.Run(&options.App{Title: "HiveBridge 1.0 · 资源发布工作台", Width: 1180, Height: 800, MinWidth: 800, MinHeight: 600,
+	err = wails.Run(&options.App{Title: "HiveBridge", Width: 1180, Height: 800, MinWidth: 800, MinHeight: 600,
 		BackgroundColour: &options.RGBA{R: 255, G: 255, B: 255, A: 255}, AssetServer: &assetserver.Options{Assets: content},
 		Bind: []interface{}{a}, OnStartup: func(ctx context.Context) { a.ctx = ctx },
 		OnBeforeClose: func(ctx context.Context) bool {

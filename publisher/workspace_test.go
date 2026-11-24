@@ -96,13 +96,31 @@ func TestDesktopBindsPendingPanel(t *testing.T) {
 	if len(v.Panels) != 2 {
 		t.Fatal(v.Panels)
 	}
-	if err := w.Bind(v.Stamp, "pending", t.TempDir()); err == nil {
-		t.Fatal("outside root accepted")
-	}
 	if err := w.Bind(v.Stamp, "pending", filepath.Join(v.Root, "missing")); err == nil {
 		t.Fatal("missing package accepted")
 	}
-	if err := w.Bind(v.Stamp, "pending", filepath.Join(v.Root, "工具 测试")); err != nil {
+	// 根目录内的目录存为相对路径；根目录外的任意有效目录存为本机绝对路径且可直接打包预览
+	external := filepath.Join(fixture(t), "工具 测试")
+	if err := w.Bind(v.Stamp, "pending", external); err != nil {
+		t.Fatalf("external dir bind failed: %v", err)
+	}
+	gotExt, err := readConfig(v.ConfigPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !filepath.IsAbs(gotExt.Panels["pending"].Source) {
+		t.Fatalf("expected absolute path for external dir, got %q", gotExt.Panels["pending"].Source)
+	}
+	vExt, _ := w.View()
+	// 即使未设置默认源码根目录，使用绝对路径的面板也能独立预览打包
+	noRoot := NewWorkspace(v.ConfigPath, filepath.Join(t.TempDir(), "unused-root"))
+	vNoRoot, _ := noRoot.View()
+	preview, err := noRoot.Prepare(vNoRoot.Stamp, []Selection{{"dev", "pending"}}, nil, false, func(string) {})
+	if err != nil || len(preview.Results) != 1 || preview.Results[0].Status != "打包通过" {
+		t.Fatalf("preview with absolute path and no root failed: %+v, %v", preview, err)
+	}
+	// 切回根目录内目录时自动保存为相对路径
+	if err := w.Bind(vExt.Stamp, "pending", filepath.Join(v.Root, "工具 测试")); err != nil {
 		t.Fatal(err)
 	}
 	got, err := readConfig(v.ConfigPath)
@@ -220,5 +238,80 @@ func TestExampleConfigOrderAndReorder(t *testing.T) {
 	}
 	if strings.Join(names, ",") != strings.Join(reordered, ",") {
 		t.Fatalf("reordered env order = %v, want %v", names, reordered)
+	}
+}
+
+func TestRemotePanelSyncAndPanelCRUD(t *testing.T) {
+	srv := mock(t, active("alarm-disposal"), active("lighting-overview"))
+	c := config{
+		Panels: map[string]panel{},
+		Environments: map[string]environment{
+			"开发环境": {URL: srv.server.URL + "/prefix", Tag: "dev", Order: 1},
+		},
+	}
+	w, v := desktopFixture(t, c)
+	if err := w.Login(v.Stamp, "开发环境", Credentials{Name: "admin", Password: "pw"}); err != nil {
+		t.Fatal(err)
+	}
+	v, _ = w.View()
+
+	// 1. 拉取并一键同步远端面板
+	remotes, err := w.ListRemotePanels("开发环境")
+	if err != nil || len(remotes) != 2 || remotes[0].Binding != "lighting/alarm-disposal" {
+		t.Fatalf("ListRemotePanels: %+v, %v", remotes, err)
+	}
+	added, err := w.SyncRemotePanels(v.Stamp, "开发环境")
+	if err != nil || added != 2 {
+		t.Fatalf("SyncRemotePanels: added=%d, err=%v", added, err)
+	}
+	v, _ = w.View()
+	if len(v.Panels) != 2 {
+		t.Fatalf("expected 2 synced panels, got %+v", v.Panels)
+	}
+	// 重复同步应幂等返回 0
+	addedAgain, err := w.SyncRemotePanels(v.Stamp, "开发环境")
+	if err != nil || addedAgain != 0 {
+		t.Fatalf("second SyncRemotePanels: added=%d, err=%v", addedAgain, err)
+	}
+
+	// 2. 手工新增（一键应用到全部环境）、编辑目标资源键、删除面板
+	if err := w.SaveEnvironment(v.Stamp, "", EnvInput{
+		Name: "测试环境", URL: "https://test.example.com", Tag: "test", Order: 2,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	v, _ = w.View()
+	if err := w.SavePanel(v.Stamp, "", "开发环境", PanelInput{
+		Name: "能耗大屏", Source: "panels/energy", Binding: "lighting/energy-board", ApplyAllEnvs: true,
+	}); err != nil {
+		t.Fatalf("SavePanel add: %v", err)
+	}
+	v, _ = w.View()
+	for _, p := range v.Panels {
+		if p.Alias == "energy-board" && (p.Bindings["开发环境"] != "lighting/energy-board" || p.Bindings["测试环境"] != "lighting/energy-board") {
+			t.Fatalf("expected ApplyAllEnvs to bind both envs: %+v", p.Bindings)
+		}
+	}
+	if err := w.SavePanel(v.Stamp, "energy-board", "开发环境", PanelInput{
+		Name: "能耗总览", Source: "panels/energy-v2", Binding: "lighting/energy-v2",
+	}); err != nil {
+		t.Fatalf("SavePanel edit: %v", err)
+	}
+	v, _ = w.View()
+	found := false
+	for _, p := range v.Panels {
+		if p.Alias == "energy-board" && p.Name == "能耗总览" && p.Bindings["开发环境"] == "lighting/energy-v2" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("edited panel not found in view: %+v", v.Panels)
+	}
+	if err := w.DeletePanel(v.Stamp, "energy-board"); err != nil {
+		t.Fatalf("DeletePanel: %v", err)
+	}
+	v, _ = w.View()
+	if len(v.Panels) != 2 {
+		t.Fatalf("expected 2 panels after delete, got %+v", v.Panels)
 	}
 }

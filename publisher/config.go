@@ -7,10 +7,12 @@ import (
 	"io/fs"
 	"net/url"
 	"os"
+	"path/filepath"
 	"regexp"
 	"slices"
 	"sort"
 	"strings"
+	"unicode"
 )
 
 type panel struct {
@@ -106,10 +108,31 @@ func nextEnvOrder(envs map[string]environment) int {
 	return maxOrder + 1
 }
 
+func isAbsPanelPath(s string) bool {
+	if filepath.IsAbs(s) {
+		return true
+	}
+	// 兼容跨平台配置中的 Windows 盘符路径（例如 D:/work/panel 或 D:\work\panel）
+	return len(s) >= 3 && ((s[0] >= 'A' && s[0] <= 'Z') || (s[0] >= 'a' && s[0] <= 'z')) && s[1] == ':' && (s[2] == '/' || s[2] == '\\')
+}
+
+func validPanelSource(source string) bool {
+	if source == "" {
+		return true
+	}
+	if strings.TrimSpace(source) != source || strings.IndexFunc(source, unicode.IsControl) >= 0 {
+		return false
+	}
+	if isAbsPanelPath(source) {
+		return true
+	}
+	return source != "." && fs.ValidPath(source) && !strings.ContainsAny(source, "\\:")
+}
+
 func (c config) validate() error {
 	for k, p := range c.Panels {
-		if !aliasPattern.MatchString(k) || strings.TrimSpace(p.Name) == "" || (p.Source != "" && (p.Source == "." || !fs.ValidPath(p.Source) || strings.ContainsAny(p.Source, "\\:"))) {
-			return fmt.Errorf("面板 %q 的名称或相对目录无效", k)
+		if !aliasPattern.MatchString(k) || strings.TrimSpace(p.Name) == "" || !validPanelSource(p.Source) {
+			return fmt.Errorf("面板 %q 的名称或目录路径无效", k)
 		}
 	}
 	origins := map[string]bool{}

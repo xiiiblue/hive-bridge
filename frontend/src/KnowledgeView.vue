@@ -18,7 +18,6 @@ import {
 } from 'lucide-vue-next'
 import {
   api,
-  envTagLabel,
   fileToBase64,
   type BatchUploadItem,
   type BatchUploadResult,
@@ -366,19 +365,9 @@ async function deleteDoc(doc: KnowledgeDocItem) {
     <header class="win-toolbar">
       <div class="win-title">
         <h1>知识库文档</h1>
-        <span
-          v-if="currentEnv"
-          class="toolbar-env-badge"
-          :data-tag="currentEnv.Tag"
-        >
+        <span v-if="currentEnv" class="toolbar-env-badge">
           <span class="env-dot" :class="{ connected: currentEnv.LoggedIn }" />
           <span>{{ currentEnv.Name }}</span>
-          <span
-            v-if="currentEnv.Tag"
-            class="tag-pill mini"
-            :data-tag="currentEnv.Tag"
-            >{{ envTagLabel(currentEnv.Tag) }}</span
-          >
         </span>
         <span v-if="bases.length" class="title-count"
           >{{ bases.length }} 个库</span

@@ -20,7 +20,6 @@ import {
 } from 'lucide-vue-next'
 import {
   api,
-  envTagLabel,
   fileToBase64,
   type SkillCatalog,
   type SkillDetail,
@@ -451,19 +450,9 @@ function formatDate(iso: string) {
     <header class="win-toolbar">
       <div class="win-title">
         <h1>企业Skill</h1>
-        <span
-          v-if="currentEnv"
-          class="toolbar-env-badge"
-          :data-tag="currentEnv.Tag"
-        >
+        <span v-if="currentEnv" class="toolbar-env-badge">
           <span class="env-dot" :class="{ connected: currentEnv.LoggedIn }" />
           <span>{{ currentEnv.Name }}</span>
-          <span
-            v-if="currentEnv.Tag"
-            class="tag-pill mini"
-            :data-tag="currentEnv.Tag"
-            >{{ envTagLabel(currentEnv.Tag) }}</span
-          >
         </span>
         <span v-if="catalog" class="title-count"
           >{{ catalog.Skills.length }} 个</span

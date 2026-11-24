@@ -247,6 +247,49 @@ function installFixture() {
             if (item) envList.push({ ...item, Order: idx + 1 })
           })
         },
+        async ListRemotePanels() {
+          return [
+            {
+              SystemKey: 'ops',
+              SystemName: '运维系统',
+              ResourceKey: 'remote-new',
+              DisplayName: '远端新面板',
+              Binding: 'ops/remote-new',
+              Version: 3,
+            },
+          ]
+        },
+        async SyncRemotePanels(stamp, env) {
+          if (panels.some((p) => p.Alias === 'remote-new')) return 0
+          panels.push({
+            Alias: 'remote-new',
+            Name: '远端新面板',
+            Source: '',
+            Bindings: { [env]: 'ops/remote-new' },
+          })
+          return 1
+        },
+        async SavePanel(stamp, prev, env, input) {
+          const alias = prev || input.Binding.split('/')[1] || 'custom-panel'
+          const existing = panels.find((p) => p.Alias === alias)
+          if (existing) {
+            existing.Name = input.Name
+            existing.Source = input.Source
+            if (input.Binding) existing.Bindings[env] = input.Binding
+            else delete existing.Bindings[env]
+          } else {
+            panels.push({
+              Alias: alias,
+              Name: input.Name,
+              Source: input.Source,
+              Bindings: input.Binding ? { [env]: input.Binding } : {},
+            })
+          }
+        },
+        async DeletePanel(stamp, alias) {
+          const idx = panels.findIndex((p) => p.Alias === alias)
+          if (idx >= 0) panels.splice(idx, 1)
+        },
         async ExportConfig() {
           return '/tmp/hivebridge.json'
         },
@@ -479,7 +522,7 @@ test('首次前置登录引导、界面添加环境、面板发布、Skill与知
     page.on('pageerror', (err) => errors.push(err.message))
     await page.addInitScript(installFixture)
     await page.goto('http://127.0.0.1:' + server.httpServer.address().port)
-    assert.equal(await page.title(), 'HiveBridge 1.0')
+    assert.equal(await page.title(), 'HiveBridge')
 
     const capture = async (name) => {
       if (process.env.HIVEBRIDGE_SCREENSHOTS !== '1') return
@@ -524,6 +567,20 @@ test('首次前置登录引导、界面添加环境、面板发布、Skill与知
       .getByRole('button', { name: '关闭', exact: true })
       .last()
       .click()
+
+    // 2.5 同步远端面板 & 点击目标资源键编辑并删除测试面板
+    await page.getByRole('button', { name: '同步远端' }).click()
+    await page.getByText('远端新面板').waitFor()
+    await page
+      .getByRole('button', { name: '配置面板 远端新面板 的目标资源键' })
+      .click()
+    await page.getByLabel('开发环境 · 目标资源键').fill('ops/remote-edited')
+    await page.getByRole('button', { name: '保存修改' }).click()
+    await page.getByText('ops/remote-edited').waitFor()
+    await page
+      .getByRole('button', { name: '配置面板 远端新面板 的目标资源键' })
+      .click()
+    await page.getByRole('button', { name: '删除面板' }).click()
 
     // 3. 左侧下方环境列表顺序验证、直接切换 + 环境管理页排序调整/新增/删除
     const readSideEnvNames = () =>

@@ -4,6 +4,21 @@ export interface Panel {
   Source: string
   Bindings: Record<string, string>
 }
+export interface PanelInput {
+  Alias: string
+  Name: string
+  Source: string
+  Binding: string
+  ApplyAllEnvs?: boolean
+}
+export interface RemotePanelOption {
+  SystemKey: string
+  SystemName: string
+  ResourceKey: string
+  DisplayName: string
+  Binding: string
+  Version: number
+}
 export type EnvTag = '' | 'dev' | 'test' | 'prod'
 export interface Env {
   Name: string
@@ -167,6 +182,15 @@ interface Bridge {
   ): Promise<void>
   DeleteEnvironment(stamp: string, name: string): Promise<void>
   ReorderEnvironments(stamp: string, names: string[]): Promise<void>
+  ListRemotePanels(env: string): Promise<RemotePanelOption[]>
+  SyncRemotePanels(stamp: string, env: string): Promise<number>
+  SavePanel(
+    stamp: string,
+    previousAlias: string,
+    env: string,
+    input: PanelInput,
+  ): Promise<void>
+  DeletePanel(stamp: string, alias: string): Promise<void>
   ChooseConfig(): Promise<void>
   ExportConfig(): Promise<string>
   ChooseRoot(): Promise<void>

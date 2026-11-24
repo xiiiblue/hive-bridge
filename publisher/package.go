@@ -65,6 +65,22 @@ func cleanPopup(b []byte) ([]byte, error) {
 }
 
 func openSource(root, source string) (*os.Root, error) {
+	if strings.TrimSpace(source) == "" {
+		return nil, errors.New("该面板尚未配置本地上传目录")
+	}
+	if filepath.IsAbs(source) {
+		info, err := os.Lstat(source)
+		if err != nil {
+			return nil, err
+		}
+		if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+			return nil, fmt.Errorf("源目录无效或为链接：%s", source)
+		}
+		return os.OpenRoot(source)
+	}
+	if strings.TrimSpace(root) == "" {
+		return nil, errors.New("该面板使用相对目录，请先选择默认源码根目录，或重新为其选择任意本机目录")
+	}
 	checkout, err := os.OpenRoot(root)
 	if err != nil {
 		return nil, err

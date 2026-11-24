@@ -13,7 +13,7 @@ import {
   ChevronUp,
   ChevronDown,
 } from 'lucide-vue-next'
-import { envTagLabel, type Env, type View } from './bridge'
+import { type Env, type View } from './bridge'
 
 const props = defineProps<{
   view: View
@@ -30,19 +30,18 @@ const emit = defineEmits<{
 }>()
 
 const search = ref('')
-const filter = ref<'all' | 'logged' | 'dev' | 'test' | 'prod'>('all')
+const filter = ref<'all' | 'logged' | 'unlogged'>('all')
 const canReorder = computed(
   () => filter.value === 'all' && search.value.trim() === '',
 )
 
 const counts = computed(() => {
   const list = props.view.Environments
+  const logged = list.filter((e) => e.LoggedIn).length
   return {
     all: list.length,
-    logged: list.filter((e) => e.LoggedIn).length,
-    dev: list.filter((e) => e.Tag === 'dev').length,
-    test: list.filter((e) => e.Tag === 'test').length,
-    prod: list.filter((e) => e.Tag === 'prod').length,
+    logged,
+    unlogged: list.length - logged,
   }
 })
 
@@ -50,15 +49,9 @@ const filteredEnvs = computed(() => {
   const q = search.value.trim().toLowerCase()
   return props.view.Environments.filter((e) => {
     if (filter.value === 'logged' && !e.LoggedIn) return false
-    if (
-      (filter.value === 'dev' ||
-        filter.value === 'test' ||
-        filter.value === 'prod') &&
-      e.Tag !== filter.value
-    )
-      return false
+    if (filter.value === 'unlogged' && e.LoggedIn) return false
     if (!q) return true
-    return [e.Name, e.URL, e.Account, envTagLabel(e.Tag)]
+    return [e.Name, e.URL, e.Account]
       .join(' ')
       .toLowerCase()
       .includes(q)
@@ -88,9 +81,7 @@ function openAdmin(e: Env) {
             v-for="f in [
               ['all', '全部', counts.all],
               ['logged', '已登录', counts.logged],
-              ['dev', '开发', counts.dev],
-              ['test', '测试', counts.test],
-              ['prod', '正式', counts.prod],
+              ['unlogged', '未登录', counts.unlogged],
             ] as const"
             :key="f[0]"
             :aria-pressed="filter === f[0]"
@@ -170,9 +161,6 @@ function openAdmin(e: Env) {
               <div class="env-table-name">
                 <span class="env-dot" :class="{ connected: e.LoggedIn }" />
                 <strong>{{ e.Name }}</strong>
-                <span v-if="e.Tag" class="tag-pill" :data-tag="e.Tag">
-                  {{ envTagLabel(e.Tag) }}
-                </span>
                 <span v-if="e.Name === activeEnv" class="current-badge">
                   当前
                 </span>

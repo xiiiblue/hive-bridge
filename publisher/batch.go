@@ -103,9 +103,6 @@ func (w *Workspace) Prepare(stamp string, chosen []Selection, creds map[string]C
 	if current != stamp {
 		return Report{}, errChanged
 	}
-	if w.root == "" {
-		return Report{}, errors.New("请先选择源码根目录")
-	}
 	targets, err := resolveSelection(c, chosen)
 	if err != nil {
 		return Report{}, err
