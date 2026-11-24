@@ -516,7 +516,7 @@ test('首次前置登录引导、界面添加环境、面板发布、Skill与知
     ).launch()
     const page = await browser.newPage({
       viewport: { width: 1120, height: 768 },
-      deviceScaleFactor: 1,
+      deviceScaleFactor: 2,
     })
     const errors = []
     page.on('pageerror', (err) => errors.push(err.message))
