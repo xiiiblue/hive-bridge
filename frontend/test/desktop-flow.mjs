@@ -76,6 +76,27 @@ function installFixture() {
         { VersionID: 'ver-1', VersionNumber: 1, CreatedAt: '2026-11-20T11:00:00Z' },
       ],
     },
+    {
+      ID: 'sk-3',
+      Key: 'legacy-check',
+      Display: '旧版巡检（已停用）',
+      Description: '已下线的历史技能示例。',
+      Example: '历史巡检',
+      Status: 'DISABLED',
+      Revision: 2,
+      CurrentVersionID: 'ver-1',
+      CurrentNumber: 1,
+      DraftVersionID: 'ver-1',
+      DraftNumber: 1,
+      HasDraft: false,
+      Tags: [],
+      ScopeIDs: [],
+      ScopeNames: [],
+      UpdatedAt: '2026-11-10T09:00:00Z',
+      Versions: [
+        { VersionID: 'ver-1', VersionNumber: 1, CreatedAt: '2026-11-10T09:00:00Z' },
+      ],
+    },
   ]
   const kbs = [
     {
@@ -549,7 +570,13 @@ test('首次前置登录引导、界面添加环境、面板发布、Skill与知
       .getByRole('button', { name: '企业Skill' })
       .click()
     await page.getByRole('heading', { name: '值班报告助手' }).waitFor()
+    // 默认仅展示「有效」Skill，隐藏已停用项；切到「停用」可见已停用项
+    assert.equal(await page.locator('.master-item').count(), 2)
     await capture('desktop-skill')
+    await page.locator('.pane-filter button', { hasText: '停用' }).click()
+    assert.equal(await page.locator('.master-item').count(), 1)
+    await page.locator('.pane-filter button', { hasText: '有效' }).click()
+    assert.equal(await page.locator('.master-item').count(), 2)
     await page.getByRole('button', { name: '下载原包' }).click()
     assert.equal(await page.evaluate(() => window.testCalls.downloadSkill), 1)
     await page.getByRole('button', { name: '发布草稿' }).click()

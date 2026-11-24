@@ -50,7 +50,7 @@ const busy = ref(false)
 const error = ref('')
 const toast = ref('')
 const search = ref('')
-const filter = ref<'all' | 'active' | 'draft' | 'disabled'>('all')
+const filter = ref<'active' | 'draft' | 'disabled' | 'all'>('active')
 const dragging = ref(false)
 
 // 弹窗状态：upload | edit
@@ -93,8 +93,15 @@ const selectedItem = computed<SkillItem | undefined>(
     (catalog.value?.Skills ?? []).find((s) => s.ID === selectedId.value),
 )
 
+const activeCount = computed(
+  () => (catalog.value?.Skills ?? []).filter((s) => s.Status === 'ACTIVE').length,
+)
 const draftCount = computed(
   () => (catalog.value?.Skills ?? []).filter((s) => s.HasDraft).length,
+)
+const disabledCount = computed(
+  () =>
+    (catalog.value?.Skills ?? []).filter((s) => s.Status === 'DISABLED').length,
 )
 
 const canCommitUpload = computed(
@@ -142,11 +149,15 @@ async function loadSkills(keepSelected = true) {
   try {
     const res = await api().ListSkills(currentEnv.value.Name)
     catalog.value = res
+    const visible = filteredSkills.value
     if (
       keepSelected &&
       selectedId.value &&
       res.Skills.some((s) => s.ID === selectedId.value)
     ) {
+      await loadDetail(selectedId.value)
+    } else if (visible.length > 0) {
+      selectedId.value = visible[0]!.ID
       await loadDetail(selectedId.value)
     } else if (res.Skills.length > 0) {
       selectedId.value = res.Skills[0]!.ID
@@ -519,14 +530,10 @@ function formatDate(iso: string) {
         <div class="pane-filter">
           <button
             v-for="f in [
+              ['active', '有效', activeCount],
+              ['draft', '草稿', draftCount],
+              ['disabled', '停用', disabledCount],
               ['all', '全部', catalog?.Skills.length ?? 0],
-              ['draft', '有草稿', draftCount],
-              [
-                'disabled',
-                '已停用',
-                (catalog?.Skills ?? []).filter((s) => s.Status === 'DISABLED')
-                  .length,
-              ],
             ] as const"
             :key="f[0]"
             :aria-pressed="filter === f[0]"
