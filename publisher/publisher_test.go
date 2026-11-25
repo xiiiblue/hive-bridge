@@ -4,7 +4,9 @@ import (
 	"archive/zip"
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -208,6 +210,9 @@ func mock(t *testing.T, rows ...resource) *fakeHive {
 				w.WriteHeader(502)
 				return
 			}
+			if h.mode == "mismatched-receipt" {
+				row.Current = "unrelated-version"
+			}
 			reply(row)
 		default:
 			http.NotFound(w, r)
@@ -277,6 +282,52 @@ func TestReconciliation(t *testing.T) {
 		})
 	}
 }
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) {
+	return f(r)
+}
+
+func TestPublishReceiptWhenReadbackFails(t *testing.T) {
+	for _, tc := range []struct {
+		name, mode, status string
+		readErr            error
+		detail             string
+	}{
+		{"confirmed", "", published, context.DeadlineExceeded, "服务器已确认发布。版本核对超时"},
+		{"confirmed-non-timeout", "", published, errors.New("connection reset"), "服务器已确认发布。版本核对失败"},
+		{"lost-receipt", "lost-publish", "发布待确认", context.DeadlineExceeded, "发布结果暂未确认。请先在管理台核对再重试"},
+		{"wrong-version", "mismatched-receipt", "发布待确认", context.DeadlineExceeded, "发布回执与本次草稿不符"},
+		{"rejected", "conflict", "发布失败", context.DeadlineExceeded, "服务器拒绝本次发布"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := active("alpha")
+			h := mock(t, r)
+			h.mode = tc.mode
+			c := newClient(h.server.URL + "/prefix")
+			readbacks := 0
+			c.http.Transport = roundTripFunc(func(req *http.Request) (*http.Response, error) {
+				if req.Method == http.MethodGet && strings.HasSuffix(req.URL.Path, resources+"/"+r.ID) {
+					readbacks++
+					return nil, tc.readErr
+				}
+				return http.DefaultTransport.RoundTrip(req)
+			})
+			if err := c.login("a", "p"); err != nil {
+				t.Fatal(err)
+			}
+			got := c.publish(target{"one", "main", "lighting", "alpha"}, r, []byte("PK"))
+			if got.status != tc.status || !strings.Contains(got.detail, tc.detail) {
+				t.Fatalf("发布结果为 %+v，需要状态 %q、说明包含 %q", got, tc.status, tc.detail)
+			}
+			if readbacks != 1 || !reflect.DeepEqual(h.writes, []string{"alpha/versions", "alpha/publish"}) {
+				t.Fatalf("应上传一次、发布一次并核对一次，实际写操作 %v，核对 %d 次", h.writes, readbacks)
+			}
+		})
+	}
+}
+
 func TestNoWritesWithoutConfirmation(t *testing.T) {
 	for _, cmd := range []string{"plan", "check", "publish"} {
 		t.Run(cmd, func(t *testing.T) {

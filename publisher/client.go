@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -239,16 +240,32 @@ func (c *client) publish(t target, r resource, pack []byte) result {
 		}
 		return result{"待核对", fmt.Sprintf("上传未取得可靠回执（%v）。读回正式版v%d，修订%d，草稿编号 %q；请在管理台核对", err, now.Number, now.Revision, now.Draft)}
 	}
-	err = c.call("POST", path+"/publish", map[string]int{"expected_revision": saved.Revision}, nil)
+	var receipt resource
+	publishErr := c.call("POST", path+"/publish", map[string]int{"expected_revision": saved.Revision}, &receipt)
+	if publishErr == nil && (receipt.ID != saved.ID || receipt.Current != saved.Draft) {
+		publishErr = errors.New("发布回执与本次草稿不符")
+	}
 	now, readErr := c.detail(r.ID)
 	if readErr != nil {
-		return result{"待核对", fmt.Sprintf("草稿 %s，正式版本读回失败（%v）", saved.Draft, readErr)}
+		check := "版本核对失败"
+		var networkErr net.Error
+		if errors.As(readErr, &networkErr) && networkErr.Timeout() {
+			check = "版本核对超时"
+		}
+		switch {
+		case publishErr == nil:
+			return result{published, fmt.Sprintf("服务器已确认发布。%s（%v）。", check, readErr)}
+		case definiteRejection(publishErr):
+			return result{"发布失败", fmt.Sprintf("草稿 %s 已保存。服务器拒绝本次发布（%v）。%s（%v）。", saved.Draft, publishErr, check, readErr)}
+		default:
+			return result{"发布待确认", fmt.Sprintf("草稿 %s 已保存，发布结果暂未确认。请先在管理台核对再重试。发布回执：%v。%s（%v）。", saved.Draft, publishErr, check, readErr)}
+		}
 	}
 	if now.Current == saved.Draft {
 		return result{published, fmt.Sprintf("v%d  %s/panels/%s/%s", now.Number, c.base, t.System, t.Key)}
 	}
-	if now.Draft == saved.Draft && definiteRejection(err) {
-		return result{"仅保存草稿", fmt.Sprintf("%s，发布失败（%v），请在管理台处理", saved.Draft, err)}
+	if now.Draft == saved.Draft && definiteRejection(publishErr) {
+		return result{"仅保存草稿", fmt.Sprintf("%s，发布失败（%v），请在管理台处理", saved.Draft, publishErr)}
 	}
 	return result{"待核对", fmt.Sprintf("本次草稿 %s，读回正式版v%d，尚未确认生效。请在管理台核对", saved.Draft, now.Number)}
 }
